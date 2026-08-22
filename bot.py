@@ -152,6 +152,26 @@ def get_user_tasks(user_id: str) -> list:
     ]
 
 
+def get_all_tasks() -> list:
+    """Barcha foydalanuvchilarning barcha vazifalarini qaytaradi (admin eksporti uchun)."""
+    conn = get_connection()
+    rows = conn.execute(
+        "SELECT id, user_id, text, category, done, created FROM tasks ORDER BY user_id, id"
+    ).fetchall()
+    conn.close()
+    return [
+        {
+            "id": row["id"],
+            "user_id": row["user_id"],
+            "text": row["text"],
+            "category": row["category"] or "📌 Shaxsiy",
+            "done": bool(row["done"]),
+            "created": row["created"],
+        }
+        for row in rows
+    ]
+
+
 def add_user_task(user_id: str, text: str, category: str = "📌 Shaxsiy") -> int:
     conn = get_connection()
     cursor = conn.execute(
@@ -294,6 +314,25 @@ def get_chat_history(user_id: str) -> list:
     return [{"role": row["role"], "message": row["message"]} for row in rows]
 
 
+def get_all_chat_history() -> list:
+    """Barcha foydalanuvchilarning AI bilan suhbat tarixini qaytaradi (admin eksporti uchun)."""
+    conn = get_connection()
+    rows = conn.execute(
+        "SELECT id, user_id, role, message, created FROM chat_history ORDER BY user_id, id"
+    ).fetchall()
+    conn.close()
+    return [
+        {
+            "id": row["id"],
+            "user_id": row["user_id"],
+            "role": row["role"],
+            "message": row["message"],
+            "created": row["created"],
+        }
+        for row in rows
+    ]
+
+
 def clear_chat_history(user_id: str) -> None:
     conn = get_connection()
     conn.execute("DELETE FROM chat_history WHERE user_id = ?", (user_id,))
@@ -399,10 +438,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def export_info(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """ADMIN BUYRUQ: Bazadagi foydalanuvchilar ma'lumotini JSON fayl qilib yuboradi."""
+    """ADMIN BUYRUQ: Foydalanuvchilar, vazifalar va AI suhbatlarini JSON fayl qilib yuboradi."""
     user = update.effective_user
     user_id = str(user.id)
-    
+
     logger.info(f"/info bajarilmoqda. User: {user_id}, Admin Target: {ADMIN_ID}")
 
     # Adminlikni tekshirish (str formatida solishtirish)
@@ -414,21 +453,35 @@ async def export_info(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     try:
         users = get_all_users()
-        
-        if not users:
-            await update.message.reply_text("⚠️ Bazada birorta ham foydalanuvchi topilmadi.")
+        tasks = get_all_tasks()
+        chat_history = get_all_chat_history()
+
+        if not users and not tasks and not chat_history:
+            await update.message.reply_text("⚠️ Bazada hozircha hech qanday ma'lumot topilmadi.")
             return
 
-        file_path = Path(DATA_DIR) / "users.json"
-        
+        data = {
+            "foydalanuvchilar": users,
+            "vazifalar": tasks,
+            "ai_suhbatlari": chat_history,
+        }
+
+        file_path = Path(DATA_DIR) / "bot_export.json"
+
         with open(file_path, "w", encoding="utf-8") as f:
-            json.dump(users, f, ensure_ascii=False, indent=4)
+            json.dump(data, f, ensure_ascii=False, indent=4)
 
         with open(file_path, "rb") as f:
             await update.message.reply_document(
                 document=f,
-                filename="users.json",
-                caption=f"📊 Barcha foydalanuvchilar ma'lumoti\nJami foydalanuvchilar: {len(users)} ta",
+                filename="bot_export.json",
+                caption=(
+                    "📊 <b>To'liq ma'lumotlar eksporti</b>\n\n"
+                    f"👥 Foydalanuvchilar: {len(users)} ta\n"
+                    f"📋 Vazifalar: {len(tasks)} ta\n"
+                    f"💬 AI suhbat xabarlari: {len(chat_history)} ta"
+                ),
+                parse_mode="HTML",
             )
     except Exception as e:
         logger.error(f"/info bajarishda xatolik: {e}")
