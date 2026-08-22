@@ -2,7 +2,8 @@ import json
 import os
 import sqlite3
 import logging
-from datetime import datetime, timedelta
+import random
+from datetime import datetime, timedelta, time
 from pathlib import Path
 
 import requests
@@ -26,8 +27,7 @@ from telegram.ext import (
 
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
-# BOT ADMIN ID'SI — O'zingizning Telegram ID'ingizni shu yerga yoki Muhit o'zgaruvchisiga kiriting
-ADMIN_ID = os.environ.get("ADMIN_ID", "6299702947")  # O'zingizning Telegram ID'ingiz bilan almashtiring
+ADMIN_ID = os.environ.get("ADMIN_ID", "6299702947")
 
 GEMINI_MODEL = "gemini-3.5-flash-lite"
 GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
@@ -36,6 +36,16 @@ DATA_DIR = os.environ.get("RAILWAY_VOLUME_MOUNT_PATH") or os.environ.get("DATA_D
 DB_PATH = Path(DATA_DIR) / "tasks.db"
 TASHKENT_OFFSET = timedelta(hours=5)
 CHAT_HISTORY_LIMIT = 16
+
+ISLAMIC_QUOTES = [
+    "📖 <b>Qur'oni Karim:</b> «Albatta, qiyinchilik bilan birga yengillik bordir.» (Sharh surasi, 6-oyat)",
+    "📖 <b>Qur'oni Karim:</b> «Menga duo qilingiz, Men sizlarga ijobat qilayman.» (G'ofir surasi, 60-oyat)",
+    "📖 <b>Qur'oni Karim:</b> «Albatta, Alloh sabr qilguvchilar bilan birgadir.» (Baqara surasi, 153-oyat)",
+    "📖 <b>Qur'oni Karim:</b> «Bas, Meni eslangiz, Men ham sizni eslayman...» (Baqara surasi, 152-oyat)",
+    "✨ <b>Hadis:</b> «Amallar faqat niyatlarga bog'liqdir...» (Buxoriy va Muslim)",
+    "✨ <b>Hadis:</b> «Sizlardan birortangiz o'zi uchun yaxshi ko'rgan narsani birodari uchun ham ravo ko'rmaguncha komil mo'min bo'la olmaydi.» (Buxoriy)",
+    "✨ <b>Hikmat:</b> Bugungi kuningizni istig'for va shukrona bilan boshlang. Alloh bergan har bir kun — yangi imkoniyatdir.",
+]
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -59,6 +69,14 @@ def get_connection() -> sqlite3.Connection:
 def init_db() -> None:
     Path(DATA_DIR).mkdir(parents=True, exist_ok=True)
     conn = get_connection()
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            user_id TEXT PRIMARY KEY,
+            username TEXT,
+            full_name TEXT,
+            joined_at TEXT NOT NULL
+        )
+    """)
     conn.execute("""
         CREATE TABLE IF NOT EXISTS tasks (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -98,6 +116,28 @@ def init_db() -> None:
     """)
     conn.commit()
     conn.close()
+
+
+# ---------- Foydalanuvchilar ----------
+
+def save_or_update_user(user_id: str, username: str, full_name: str) -> None:
+    conn = get_connection()
+    conn.execute("""
+        INSERT INTO users (user_id, username, full_name, joined_at)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(user_id) DO UPDATE SET
+            username = excluded.username,
+            full_name = excluded.full_name
+    """, (user_id, username, full_name, now_tashkent().strftime("%Y-%m-%d %H:%M")))
+    conn.commit()
+    conn.close()
+
+
+def get_all_users() -> list:
+    conn = get_connection()
+    rows = conn.execute("SELECT user_id, username, full_name, joined_at FROM users").fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
 
 
 # ---------- Vazifalar ----------
@@ -347,7 +387,6 @@ ASSISTANT_SYSTEM_PROMPT = (
 # ==================== TELEGRAM MENYUSI VA BUYRUQLARI ====================
 
 def main_keyboard():
-    """Asosiy pastki tugmalar menyusi (Reply Keyboard)."""
     return ReplyKeyboardMarkup(
         [
             [KeyboardButton("📝 Yangi vazifa"), KeyboardButton("📋 Vazifalarim")],
@@ -358,12 +397,37 @@ def main_keyboard():
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user = update.effective_user
+    save_or_update_user(str(user.id), user.username or "", user.full_name or "")
+    
     text = (
         "<b>Salom! 👋 Men sizning shaxsiy AI yordamchingizman.</b>\n\n"
         "🧠 <b>AI bilan muloqot:</b> Menga shunchaki xabar yozing!\n"
         "📝 <b>Vazifalar:</b> Pastdagi tugmalardan foydalaning yoki <code>/task Vazifa matni</code> buyrug'ini yuboring."
     )
     await update.message.reply_text(text, parse_mode="HTML", reply_markup=main_keyboard())
+
+
+async def export_info(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """ADMIN BUYRUQ: Bazadagi foydalanuvchilar ma'lumotini JSON fayl qilib yuboradi."""
+    user_id = str(update.effective_user.id)
+    if user_id != str(ADMIN_ID):
+        await update.message.reply_text("⛔ <b>Bu buyruq faqat bot admini uchun!</b>", parse_mode="HTML")
+        return
+
+    users = get_all_users()
+    file_path = Path(DATA_DIR) / "users.json"
+    
+    with open(file_path, "w", encoding="utf-8") as f:
+        json.dump(users, f, ensure_ascii=False, indent=4)
+
+    with open(file_path, "rb") as f:
+        await update.message.reply_document(
+            document=f,
+            filename="users.json",
+            caption=f"📊 <b>Barcha foydalanuvchilar ma'lumoti</b>\n\nJami foydalanuvchilar: <b>{len(users)} ta</b>",
+            parse_mode="HTML",
+        )
 
 
 async def forget_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -417,7 +481,6 @@ async def add_task(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def list_tasks(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Vazifalarni alohida emas, bitta chiroyli kartochka shaklida chiqaradi."""
     user_id = str(update.effective_user.id)
     tasks = get_user_tasks(user_id)
 
@@ -432,7 +495,6 @@ async def list_tasks(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         status = "✅" if task["done"] else "🔲"
         text += f"{idx}. {status} <b>{task['text']}</b>\n   └ {task['category']} | 📅 <i>{task['created']}</i>\n\n"
         
-        # Har bir vazifa uchun boshqaruv tugmalari
         btn_status = "↩️ Tiklash" if task["done"] else "✅ Bajarildi"
         keyboard.append([
             InlineKeyboardButton(f"{idx}. {btn_status}", callback_data=f"toggle_{task['id']}"),
@@ -453,10 +515,7 @@ async def clear_done(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
 
 async def debug_gemini(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """FAQAT ADMIN UCHUN ISHLAYDI: Diagnostika buyrug'i."""
     user_id = str(update.effective_user.id)
-    
-    # Check Admin Authority
     if user_id != str(ADMIN_ID):
         await update.message.reply_text("⛔ <b>Bu buyruq faqat bot admini uchun!</b>", parse_mode="HTML")
         return
@@ -513,7 +572,6 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
 
 async def list_tasks_refresh(query, user_id: str):
-    """Callback bosilganda ro'yxatni yangilab ko'rsatish funksiyasi."""
     tasks = get_user_tasks(user_id)
     if not tasks:
         await query.edit_message_text("📋 <b>Sizda boshqa vazifalar qolmapdi.</b>", parse_mode="HTML")
@@ -539,11 +597,12 @@ async def list_tasks_refresh(query, user_id: str):
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Matnli xabarlarni qayta ishlash hamda Reply Keyboard bosilishini ushlash."""
-    user_id = str(update.effective_user.id)
+    user = update.effective_user
+    save_or_update_user(str(user.id), user.username or "", user.full_name or "")
+    
+    user_id = str(user.id)
     user_message = update.message.text
 
-    # Reply Keyboard buyruqlarini ushlash
     if user_message == "📝 Yangi vazifa":
         await add_task_prompt(update, context)
         return
@@ -557,7 +616,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await forget_command(update, context)
         return
 
-    # Eslatma vaqtini kutish mantig'i
     pending = get_pending_action(user_id)
     if pending and pending["action"] == "awaiting_time":
         task_id = pending["task_id"]
@@ -581,7 +639,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             await update.message.reply_text("⚠️ Vaqtni aniqlay olmadim. Eslatma qo'yilmadi.")
         return
 
-    # Aks holda AI bilan suhbat
     await update.message.reply_chat_action("typing")
     reply = ask_gemini_chat(user_id, user_message)
     await update.message.reply_text(reply)
@@ -603,6 +660,38 @@ async def check_reminders(context: ContextTypes.DEFAULT_TYPE) -> None:
             mark_reminder_sent(reminder["id"])
 
 
+def generate_islamic_quote() -> str:
+    """Gemini API orqali har kuni yangi oyat va hadis generatsiya qiladi."""
+    prompt = (
+        "Menga har kunlik tonggi eslatma uchun bitta Qur'on oyati (surasi va oyat raqami bilan) "
+        "yoki sahix hadis, va uning ketidan 1-2 jumladan iborat qisqa, ilhomlantiruvchi ta'sirli man'oviy xulosa yozib ber. "
+        "Javob o'zbek tilida, chiroyli formatda va emojilar bilan bo'lsin. Keraksiz kirish so'zlarisiz faqat matnning o'zini ber."
+    )
+    contents = [{"role": "user", "parts": [{"text": prompt}]}]
+    reply = _gemini_request(contents, system_instruction="Sen islomiy bilimlar bo'yicha odobli va aniq yordamchisan.")
+    
+    if reply:
+        return reply
+    # Agar API vaqtincha ishlamay qolsa, zaxira javob:
+    return "📖 <b>Qur'oni Karim:</b> «Albatta, qiyinchilik bilan birga yengillik bordir.» (Sharh surasi, 6-oyat)"
+
+
+async def send_daily_quote(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Har kuni ertalab barcha foydalanuvchilarga AI tomonidan tayyorlangan yangi oyat/hadis yuboradi."""
+    users = get_all_users()
+    quote = generate_islamic_quote()
+    message = f"☀️ <b>Xayrli tong!</b>\n\n{quote}"
+
+    for u in users:
+        try:
+            await context.bot.send_message(
+                chat_id=int(u["user_id"]),
+                text=message,
+                parse_mode="HTML",
+            )
+        except Exception as e:
+            logger.error(f"Ertalabki xabar yuborishda xatolik ({u['user_id']}): {e}")
+
 def main() -> None:
     if not TELEGRAM_BOT_TOKEN or not GEMINI_API_KEY:
         raise RuntimeError("TOKEN yoki API KEY muhit o'zgaruvchisi topilmadi.")
@@ -617,11 +706,16 @@ def main() -> None:
     app.add_handler(CommandHandler("clear", clear_done))
     app.add_handler(CommandHandler("forget", forget_command))
     app.add_handler(CommandHandler("debug", debug_gemini))
+    app.add_handler(CommandHandler("info", export_info))  # Admin buyrug'i
     app.add_handler(CallbackQueryHandler(button_callback))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     if app.job_queue is not None:
+        # Har 30 soniyada vazifa eslatmalarini tekshirish
         app.job_queue.run_repeating(check_reminders, interval=30, first=10)
+        
+        # Har kuni Toshkent vaqti bilan 07:00 da oyat/hikmat yuborish (UTC 02:00)
+        app.job_queue.run_daily(send_daily_quote, time=time(2, 0, 0))
 
     logger.info("Bot ishga tushmoqda...")
     app.run_polling()
