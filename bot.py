@@ -27,7 +27,7 @@ from telegram.ext import (
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 # BOT ADMIN ID'SI — O'zingizning Telegram ID'ingizni shu yerga yoki Muhit o'zgaruvchisiga kiriting
-ADMIN_ID = os.environ.get("ADMIN_ID", "123456789")  # O'zingizning Telegram ID'ingiz bilan almashtiring
+ADMIN_ID = os.environ.get("ADMIN_ID", "6299702947")  # O'zingizning Telegram ID'ingiz bilan almashtiring
 
 GEMINI_MODEL = "gemini-3.5-flash-lite"
 GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
