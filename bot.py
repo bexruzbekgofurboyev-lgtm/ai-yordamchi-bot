@@ -30,7 +30,7 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 ADMIN_ID = os.environ.get("ADMIN_ID", "6299702947")
 
 # RASMIY GEMINI MODELI NOMI (gemini-3.5 degani yo'q)
-GEMINI_MODEL = "gemini-2.5-flash"
+GEMINI_MODEL = "gemini-3.5-flash-lite"
 GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
 
 DATA_DIR = os.environ.get("RAILWAY_VOLUME_MOUNT_PATH") or os.environ.get("DATA_DIR", ".")
