@@ -29,23 +29,14 @@ TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 ADMIN_ID = os.environ.get("ADMIN_ID", "6299702947")
 
-GEMINI_MODEL = "gemini-3.5-flash-lite"
+# RASMIY GEMINI MODELI NOMI (gemini-3.5 degani yo'q)
+GEMINI_MODEL = "gemini-2.5-flash"
 GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
 
 DATA_DIR = os.environ.get("RAILWAY_VOLUME_MOUNT_PATH") or os.environ.get("DATA_DIR", ".")
 DB_PATH = Path(DATA_DIR) / "tasks.db"
 TASHKENT_OFFSET = timedelta(hours=5)
 CHAT_HISTORY_LIMIT = 16
-
-ISLAMIC_QUOTES = [
-    "📖 <b>Qur'oni Karim:</b> «Albatta, qiyinchilik bilan birga yengillik bordir.» (Sharh surasi, 6-oyat)",
-    "📖 <b>Qur'oni Karim:</b> «Menga duo qilingiz, Men sizlarga ijobat qilayman.» (G'ofir surasi, 60-oyat)",
-    "📖 <b>Qur'oni Karim:</b> «Albatta, Alloh sabr qilguvchilar bilan birgadir.» (Baqara surasi, 153-oyat)",
-    "📖 <b>Qur'oni Karim:</b> «Bas, Meni eslangiz, Men ham sizni eslayman...» (Baqara surasi, 152-oyat)",
-    "✨ <b>Hadis:</b> «Amallar faqat niyatlarga bog'liqdir...» (Buxoriy va Muslim)",
-    "✨ <b>Hadis:</b> «Sizlardan birortangiz o'zi uchun yaxshi ko'rgan narsani birodari uchun ham ravo ko'rmaguncha komil mo'min bo'la olmaydi.» (Buxoriy)",
-    "✨ <b>Hikmat:</b> Bugungi kuningizni istig'for va shukrona bilan boshlang. Alloh bergan har bir kun — yangi imkoniyatdir.",
-]
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -319,7 +310,6 @@ def _gemini_request(contents: list, system_instruction: str = ""):
     }
     payload = {
         "contents": contents,
-        "generationConfig": {"thinkingConfig": {"thinkingLevel": "minimal"}},
     }
     if system_instruction:
         payload["systemInstruction"] = {"parts": [{"text": system_instruction}]}
@@ -328,12 +318,12 @@ def _gemini_request(contents: list, system_instruction: str = ""):
         try:
             response = requests.post(GEMINI_URL, headers=headers, json=payload, timeout=60)
             if response.status_code != 200:
-                logger.error(f"Gemini API xatosi: {response.status_code}")
+                logger.error(f"Gemini API xatosi [{response.status_code}]: {response.text}")
                 return None
             result = response.json()
             return result["candidates"][0]["content"]["parts"][0]["text"]
         except Exception as e:
-            logger.error(f"Gemini API xatosi: {e}")
+            logger.error(f"Gemini API ulashda xatolik: {e}")
             return None
 
 
@@ -413,14 +403,12 @@ async def export_info(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     user = update.effective_user
     user_id = str(user.id)
     
-    # Debug uchun log chiqarish
-    logger.info(f"/info buyrug'i keldi. Sender ID: {user_id}, Configured ADMIN_ID: {ADMIN_ID}")
+    logger.info(f"/info bajarilmoqda. User: {user_id}, Admin Target: {ADMIN_ID}")
 
-    # Adminlikni tekshirish
+    # Adminlikni tekshirish (str formatida solishtirish)
     if str(user_id) != str(ADMIN_ID):
         await update.message.reply_text(
-            f"⛔ <b>Bu buyruq faqat bot admini uchun!</b>\n\nSizning ID: <code>{user_id}</code>", 
-            parse_mode="HTML"
+            f"⛔ Bu buyruq faqat bot admini uchun!\nSizning ID: {user_id}"
         )
         return
 
@@ -428,7 +416,7 @@ async def export_info(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         users = get_all_users()
         
         if not users:
-            await update.message.reply_text("⚠️ Bazada birorta ham foydalanuvchi topilmadi. Avval /start buyrug'ini bosing.")
+            await update.message.reply_text("⚠️ Bazada birorta ham foydalanuvchi topilmadi.")
             return
 
         file_path = Path(DATA_DIR) / "users.json"
@@ -440,12 +428,11 @@ async def export_info(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             await update.message.reply_document(
                 document=f,
                 filename="users.json",
-                caption=f"📊 <b>Barcha foydalanuvchilar ma'lumoti</b>\n\nJami foydalanuvchilar: <b>{len(users)} ta</b>",
-                parse_mode="HTML",
+                caption=f"📊 Barcha foydalanuvchilar ma'lumoti\nJami foydalanuvchilar: {len(users)} ta",
             )
     except Exception as e:
         logger.error(f"/info bajarishda xatolik: {e}")
-        await update.message.reply_text(f"❌ Xatolik yuz berdi: <code>{e}</code>", parse_mode="HTML")
+        await update.message.reply_text(f"❌ Xatolik yuz berdi: {e}")
 
 
 async def forget_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -535,7 +522,7 @@ async def clear_done(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 async def debug_gemini(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = str(update.effective_user.id)
     if user_id != str(ADMIN_ID):
-        await update.message.reply_text("⛔ <b>Bu buyruq faqat bot admini uchun!</b>", parse_mode="HTML")
+        await update.message.reply_text("⛔ Bu buyruq faqat bot admini uchun!")
         return
 
     await update.message.reply_chat_action("typing")
@@ -548,8 +535,7 @@ async def debug_gemini(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         )
         safe_body = response.text.replace(GEMINI_API_KEY, "[YASHIRILGAN]")[:1000]
         await update.message.reply_text(
-            f"🛠️ <b>Debug Ma'lumoti:</b>\n\n<b>Status:</b> {response.status_code}\n<b>Javob:</b>\n<code>{safe_body}</code>",
-            parse_mode="HTML",
+            f"🛠️ Debug Ma'lumoti:\n\nStatus: {response.status_code}\nJavob:\n{safe_body}"
         )
     except Exception as e:
         await update.message.reply_text(f"❌ Xatolik: {e}")
@@ -682,7 +668,7 @@ def generate_islamic_quote() -> str:
     """Gemini API orqali har kuni yangi oyat va hadis generatsiya qiladi."""
     prompt = (
         "Menga har kunlik tonggi eslatma uchun bitta Qur'on oyati (surasi va oyat raqami bilan) "
-        "yoki sahix hadis, va uning ketidan 1-2 jumladan iborat qisqa, ilhomlantiruvchi ta'sirli man'oviy xulosa yozib ber. "
+        "yoki sahix hadis, va uning ketidan 1-2 jumladan iborat qisqa, ilhomlantiruvchi ta'sirli ma'naviy xulosa yozib ber. "
         "Javob o'zbek tilida, chiroyli formatda va emojilar bilan bo'lsin. Keraksiz kirish so'zlarisiz faqat matnning o'zini ber."
     )
     contents = [{"role": "user", "parts": [{"text": prompt}]}]
@@ -690,7 +676,6 @@ def generate_islamic_quote() -> str:
     
     if reply:
         return reply
-    # Agar API vaqtincha ishlamay qolsa, zaxira javob:
     return "📖 <b>Qur'oni Karim:</b> «Albatta, qiyinchilik bilan birga yengillik bordir.» (Sharh surasi, 6-oyat)"
 
 
@@ -710,6 +695,7 @@ async def send_daily_quote(context: ContextTypes.DEFAULT_TYPE) -> None:
         except Exception as e:
             logger.error(f"Ertalabki xabar yuborishda xatolik ({u['user_id']}): {e}")
 
+
 def main() -> None:
     if not TELEGRAM_BOT_TOKEN or not GEMINI_API_KEY:
         raise RuntimeError("TOKEN yoki API KEY muhit o'zgaruvchisi topilmadi.")
@@ -724,15 +710,12 @@ def main() -> None:
     app.add_handler(CommandHandler("clear", clear_done))
     app.add_handler(CommandHandler("forget", forget_command))
     app.add_handler(CommandHandler("debug", debug_gemini))
-    app.add_handler(CommandHandler("info", export_info))  # Admin buyrug'i
+    app.add_handler(CommandHandler("info", export_info))
     app.add_handler(CallbackQueryHandler(button_callback))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     if app.job_queue is not None:
-        # Har 30 soniyada vazifa eslatmalarini tekshirish
         app.job_queue.run_repeating(check_reminders, interval=30, first=10)
-        
-        # Har kuni Toshkent vaqti bilan 07:00 da oyat/hikmat yuborish (UTC 02:00)
         app.job_queue.run_daily(send_daily_quote, time=time(2, 0, 0))
 
     logger.info("Bot ishga tushmoqda...")
