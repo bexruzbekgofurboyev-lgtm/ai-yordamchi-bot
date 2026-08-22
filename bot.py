@@ -410,24 +410,42 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def export_info(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """ADMIN BUYRUQ: Bazadagi foydalanuvchilar ma'lumotini JSON fayl qilib yuboradi."""
-    user_id = str(update.effective_user.id)
-    if user_id != str(ADMIN_ID):
-        await update.message.reply_text("⛔ <b>Bu buyruq faqat bot admini uchun!</b>", parse_mode="HTML")
+    user = update.effective_user
+    user_id = str(user.id)
+    
+    # Debug uchun log chiqarish
+    logger.info(f"/info buyrug'i keldi. Sender ID: {user_id}, Configured ADMIN_ID: {ADMIN_ID}")
+
+    # Adminlikni tekshirish
+    if str(user_id) != str(ADMIN_ID):
+        await update.message.reply_text(
+            f"⛔ <b>Bu buyruq faqat bot admini uchun!</b>\n\nSizning ID: <code>{user_id}</code>", 
+            parse_mode="HTML"
+        )
         return
 
-    users = get_all_users()
-    file_path = Path(DATA_DIR) / "users.json"
-    
-    with open(file_path, "w", encoding="utf-8") as f:
-        json.dump(users, f, ensure_ascii=False, indent=4)
+    try:
+        users = get_all_users()
+        
+        if not users:
+            await update.message.reply_text("⚠️ Bazada birorta ham foydalanuvchi topilmadi. Avval /start buyrug'ini bosing.")
+            return
 
-    with open(file_path, "rb") as f:
-        await update.message.reply_document(
-            document=f,
-            filename="users.json",
-            caption=f"📊 <b>Barcha foydalanuvchilar ma'lumoti</b>\n\nJami foydalanuvchilar: <b>{len(users)} ta</b>",
-            parse_mode="HTML",
-        )
+        file_path = Path(DATA_DIR) / "users.json"
+        
+        with open(file_path, "w", encoding="utf-8") as f:
+            json.dump(users, f, ensure_ascii=False, indent=4)
+
+        with open(file_path, "rb") as f:
+            await update.message.reply_document(
+                document=f,
+                filename="users.json",
+                caption=f"📊 <b>Barcha foydalanuvchilar ma'lumoti</b>\n\nJami foydalanuvchilar: <b>{len(users)} ta</b>",
+                parse_mode="HTML",
+            )
+    except Exception as e:
+        logger.error(f"/info bajarishda xatolik: {e}")
+        await update.message.reply_text(f"❌ Xatolik yuz berdi: <code>{e}</code>", parse_mode="HTML")
 
 
 async def forget_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
